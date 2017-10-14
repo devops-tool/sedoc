@@ -62,3 +62,110 @@ work in old Bourne shell; unknown if it works in POSIX shell):
 
 You can also check with `if [ "$PS1" ] ...`, but this may not be as
 reliable depending on what the user has previously run in his setup.
+
+
+XXX
+---
+
+https://unix.stackexchange.com/a/46856/10489
+https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
+
+
+
+Categories:
+* Env has already been set up by me. If not ("fresh login"):
+  * check $TERM with tset
+  * umask
+  * ssh-agent if not provided by login mechanism
+
+
+* interactive or not: determines what aliases etc. are available?
+  * set -o vi
+* tty or not: determines TERM handling, command line type
+
+
+cjs Initialization
+------------------
+
+When a shell starts, it may inherit state that has been previously set
+up by the user or may be a "fresh login," having the default state set
+up by the sysadmin. (This is not the same as whether Bash considers
+itself to be a "login shell" according to [Initalization]; see above.)
+
+I divide my initialization into several parts:
+
+1. Defaults which should override the system configuration
+   (`/etc/profile`) on a fresh login but not override subsequent user
+   configuration (even just typed at the command line).  
+   • Done in: `~/.bash_profile`  
+   • Examples: `umask 0720`  
+
+2. Interactive configuration which should always be set in interactive
+   shells but should not be set when running shell scripts that might
+   have their own commands.  
+   • Done in: `.bashrc` only when the shell is interactive  
+   • Examples: My `dum` shell function to run `du -ms "$@" | sort -n`  
+
+3. Configuration that should always be forced in new shells or when
+   re-initializing an existing shell.
+   • Done in: `.bashrc`
+   • Examples: Ensuring that `~/.local/bin/` is in the path
+
+In all cases it appears that only `.bash_profile` or `.bashrc` is
+sourced, never both. (XXX verify this.) Thus, each needs to source
+the other. We make both idempotent and follow these rules:
+
+* `.bash_profile`:
+  * immediately `return`s (not `exit`!) if `CJS_PROFILE` env var is set
+  * exports `CJS_PROFILE=true`
+  * does setup to override system defaults (only)
+  * does handy initialization (TERM confirmation, fortune) if interactive
+  * sources `.bashrc`
+* `.bashrc`:
+  * sources `.bash_profile` (sets up or returns because set up)
+  * constant config (3 above) that always overrides everything
+  * interactive-only config if interactive
+
+XXX how to deal with
+* bashrc calls profile
+  * profile calls bashrc
+    * bashrc calls profile, even with immediate exit...
+
+Ah, so we do continuation passing and if `.bashrc` has to call profile
+it execs that, letting profile call back to bashrc to finish init?
+But then `.bashrc` also has to know about `CJS_PROFILE` var.
+
+XXX Notes I'm not sure what to do with
+--------------------------------------
+
+It's not clear why, but the clear usage intent is to have users source
+their `.bashrc` from their `.profile`. (Otherwise your login
+interactive shell has a different enviroment from subsequent
+interactive shells.)
+
+XXX POSIX `$ENV` behaviour
+
+### `.profile`
+
+If `.profile` is run, you're logging into a host and have no previous
+environment set up. (However, you may or may not be interactive.) So
+set up things that you'd do if you have no previous processes running
+such as ssh-agent (if not already provided by sshd), `tset` (because
+you don't yet know if this system has your terminfo entry), etc.
+
+probably should check for interactive and not do interactive stuff in
+non-interactive shells (created by 'ssh host <file')
+
+`.profile` is run when logging into a host; it may be interactive or
+not depending on what the stdin is for ssh or whatever.
+
+### `.bashrc`
+
+ulimit is something you want to "set on login," but must be done in
+`.bashrc` because 'ssh somehost acommand' will, despite being a fresh
+login to the host, not run .profile
+
+
+
+[Invocation]: http://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
+[debhelper]: https://manpages.debian.org/stretch/debhelper/dh.1.en.html
